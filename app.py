@@ -5,7 +5,7 @@ from io import BytesIO
 import cv2
 import numpy as np
 import pandas as pd
-from PIL import Image, ImageEnhance
+from PIL import Image, ImageEnhance, ImageFilter
 from rembg import remove
 import streamlit as st
 from streamlit_image_coordinates import streamlit_image_coordinates
@@ -78,7 +78,7 @@ if current_page == "feature":
 
         return crop_by_ellipse
 
-    # Xoay ảnh
+    # Chức năng xoay ảnh
     def rotate_image(image, angle):
 
         img_array = np.array(image)
@@ -109,7 +109,7 @@ if current_page == "feature":
 
         return rotated_image
 
-    # Hàm zoom ảnh
+    # Chức năng zoom ảnh
     def zoom_image(image, zoom_factor, coordinates):
         img_array = np.array(image)
         height, width, _ = img_array.shape
@@ -122,7 +122,7 @@ if current_page == "feature":
 
         return zoomed_image
 
-    # Hàm thay đổi tỉ lệ ảnh
+    # Chức năng thay đổi tỉ lệ ảnh
     def resize_image(image, aspect_ratio):
 
         img_array = np.array(image)
@@ -141,7 +141,13 @@ if current_page == "feature":
         resized_image = Image.fromarray(resized_img_array)
         return resized_image
 
-    # Code phần điều chỉnh ảnh
+    # Chức năng lật ảnh
+    def flip_bottom(image, dimension):
+        img_array = np.array(image)
+        flipped_image = cv2.flip(img_array, dimension)
+        return Image.fromarray(flipped_image)
+    
+    # Code phần điều chỉnh ảnh                                  
     # Độ sáng
     def adjust_image_gamma_lookuptable(image, gamma=1.0):
         # Chuyển đổi image thành mảng NumPy
@@ -158,6 +164,15 @@ if current_page == "feature":
 
         return adjusted_image
 
+    # Độ ấm
+    def adjust_temperature(image, factor):
+        
+        
+        enhancer = ImageEnhance.Color(image) # Tạo một đối tượng Enhancer cho Temperature
+        image_with_temperature = enhancer.enhance(factor) # Áp dụng hiệu ứng Temperature
+        
+        return (image_with_temperature)
+        
     # Độ tương phản
     def adjust_contrast(image, contrast_factor):
         enhancer = ImageEnhance.Contrast(image)
@@ -205,6 +220,15 @@ if current_page == "feature":
         kernel = np.ones((slider, slider), np.float32) / (slider ** 2) # Tạo kernel làm mịn
         smoothed_image = cv2.filter2D(converted_img, -1, kernel) # Làm mịn ảnh bằng filter2D
         return smoothed_image
+    
+    def process_logo_contour(image):
+        convert_image = (image.convert('L'))
+        threshold = 50
+        convert_image = convert_image.point(lambda x: 255 if x > threshold else 0)
+
+        # Áp dụng bộ lọc Contour
+        convert_image = convert_image.filter(ImageFilter.CONTOUR)
+        return convert_image
     
     # Hàm chuyển đổi từ mã màu hex sang tuple BGR
     def hex_to_bgr(hex_color):
@@ -280,17 +304,28 @@ if current_page == "feature":
                                                help='Lựa chọn tỉ lệ mới cho bức ảnh của bạn')
             image = resize_image(image, aspect_ratio)
             
+        if "Lật ảnh" in selected_tools:
+            options=st.sidebar.selectbox("Chọn kiểu lật", ["Chiều dọc", "Chiều ngang"])
+            d = 0
+            if "Chiều ngang" in options:
+                d = 1
+            image = flip_bottom(image, d)
+            
         if "Độ sáng" in selected_tools:
             gamma_value = st.sidebar.slider("Chọn độ sáng", 0.0, 10.0, 5.0, 0.5, help="Kéo thanh trượt để chỉnh độ sáng")
             image = adjust_image_gamma_lookuptable(image, gamma_value/5)
+            
+        if "Độ ấm" in selected_tools:
+            factor = st.sidebar.slider("Chon độ ấm", 0.0, 10.0, 5.0, 0.5, help="Kéo thanh trượt để chỉnh độ ấm")
+            image = adjust_temperature(image, factor/5)
         
         if "Độ tương phản" in selected_tools:
             contrast_factor = st.sidebar.slider("Chọn Độ Tương Phản", 0.0, 10.0, 5.0, 0.5, help="Kéo thanh trượt để chỉnh độ tương phản")
             image = adjust_contrast(image, contrast_factor/5)
         
         if "Độ bão hòa" in selected_tools:
-            saturation_factor = st.sidebar.slider("Chọn độ bão hòa", 0.0, 2.0, 1.0, 0.01, help="Kéo thanh trượt để chỉnh độ bão hòa")
-            image = adjust_saturation(image, saturation_factor)
+            saturation_factor = st.sidebar.slider("Chọn độ bão hòa", 0.0, 10.0, 5.0, 0.5, help="Kéo thanh trượt để chỉnh độ bão hòa")
+            image = adjust_saturation(image, saturation_factor/5)
             
         if "Original" in selected_tools:
             image = image
@@ -313,6 +348,9 @@ if current_page == "feature":
         if "Smooth Effect" in selected_tools:
             slider = st.sidebar.slider("Điều chỉnh độ mịn", 1, 10, 5, 1)
             image = Smooth_Effect(image, slider)
+        
+        if "process_logo_contour" in selected_tools:
+            image = process_logo_contour(image)
         
         if "Chèn chữ" in selected_tools:
             text_to_add = st.sidebar.text_input("Nhập văn bản", value="HIT")
@@ -363,23 +401,18 @@ if current_page == "feature":
                 selected_tools_6 = []
                 
                 if "Công cụ" in selected_functions:
-                    st.title("Công cụ")
-                    selected_tools_1 = st.multiselect("Chọn công cụ", ["Cắt ảnh", "Xoay ảnh", "Zoom", "Thay đổi tỉ lệ ảnh"])
+                    selected_tools_1 = st.multiselect("Chọn công cụ", ["Cắt ảnh", "Xoay ảnh", "Zoom", "Thay đổi tỉ lệ ảnh", "Lật ảnh"])
                 
                 if "Điều chỉnh" in selected_functions:
-                    st.title("Điều chỉnh")
-                    selected_tools_2 = st.multiselect("", ["Độ sáng", "Độ tương phản", "Độ bão hòa"])
+                    selected_tools_2 = st.multiselect("Điều chỉnh", ["Độ sáng", "Độ ấm", "Độ tương phản", "Độ bão hòa"])
                 
                 if "Hiệu ứng" in selected_functions:
-                    st.title("Hiệu ứng")
-                    selected_tools_3 = st.radio("filters", ["Original", "Gray Image", "Black and White", "Pencil Sketch", "Blur Effect", "Smooth Effect"])
+                    selected_tools_3 = st.radio("filters", ["Original", "Gray Image", "Black and White", "Pencil Sketch", "Blur Effect", "Smooth Effect", "process_logo_contour"])
                 
                 if "Chữ" in selected_functions:
-                    st.title("Chữ")
                     selected_tools_4 = st.radio("", ["Chèn chữ"])
                     
                 if "Xóa phông" in selected_functions:
-                    st.title("Xóa phông")
                     selected_tools_6 = st.radio("", ["Xóa phông"])
 
                 # Gộp danh sách công cụ đã chọn
